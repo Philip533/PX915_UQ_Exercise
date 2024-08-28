@@ -89,39 +89,19 @@ if(len(sys.argv) == 1):
 # For now we are keeping nmax at 20
 nmax = 20
 
+
 # Get the element from command line
 element = sys.argv[1]
-l_distribution = sys.argv[2]
+alpha = sys.argv[2]
+iters = int(sys.argv[3])
+
+nop_line = "NOP   OR   0"
+experiment_name = element+"_"+alpha
 
 # Get all the experimental data, but it's not split 
 # into intensities and errors yet
 exp_intens = {}
 exp_intens, num_s_transitions = read_exp_data(element)
-
-# First let's generate an array containing the mean population
-distribution = np.zeros(nmax)
-
-# Custom distribution used
-# Unused behaviour for now
-if(int(l_distribution) == -1):
-    print ("Custom l-distribution chosen.")
-    nop_line = "NOP   OR   "+str(l_distribution)
-    experiment_name = element+"custom"+alpha
-
-# Modified statistical distribution
-elif(int(l_distribution) == 0):
-    print ("Modified statistical distribution chosen")
-    if(len(sys.argv) <= 3):
-        print ("Fatal error: Exponent must be provided")
-        sys.exit()
-    else:
-        alpha = sys.argv[3]
-        print ("Exponent alpha = ", alpha)
-        nop_line = "NOP   OR   "+str(l_distribution)
-        experiment_name = element+"_stat_"+alpha
-        alpha = float(alpha)
-        for i in range(nmax):
-            distribution[i] = stat_dist(alpha, i)
 
 # Name of the folder which will contain the results
 os.makedirs(experiment_name, exist_ok=True)
@@ -134,6 +114,7 @@ os.system("gfortran -g --std=legacy -fd-lines-as-comments -ffpe-trap=zero,invali
 
 # More necessary lines for the input file
 # which are required for every run
+# XEQ starts the cascade, and stop stops the code
 stop_line = "STO(P)NE"
 xeq_line = "XEQ   NE"
 
@@ -142,11 +123,6 @@ shutil.copyfile("basic_input", experiment_name+"/basic_input")
 
 # Move into the proper directory
 os.chdir(experiment_name)
-
-# Number of samples to use in each degree of freedom
-# for the sensitivity analysis
-# USER SPECIFY THIS NUMBER TO OBTAIN THE REPRODUCIBLE RESULT
-iters = 100
 
 # This dictionary will contain all possible n level transitions
 # from Akylas
@@ -159,104 +135,144 @@ list_of_dicts = []
 counter = 0
 
 # Loop over a set of bounds from the user specific exponent
-if(int(l_distribution) == 0):
 
-	# Set the range we are looking at
-    sensitivity_range = 3.0
-    upper_bound = alpha * ( 1 + sensitivity_range)
-    lower_bound = alpha * ( 1 - sensitivity_range)
+# Set the range we are looking at
+sensitivity_range = 3.0
+alpha = float(alpha)
+upper_bound = alpha * ( 1 + sensitivity_range)
+lower_bound = alpha * ( 1 - sensitivity_range)
 
-	# Zero the alpha array
-    alpha_vals = np.zeros(iters)
+# Zero the alpha array
+alpha_vals = np.zeros(iters)
 
-	# Loop over our range of parameter space
-    for i in np.arange(lower_bound, upper_bound, (upper_bound - lower_bound)/iters):
+# Holds 2 values to calculate the gradient
+grad_values = []
+grad_step = 1e-6 * 0.16
+opt_alpha = 0.16
+alpha_std = 8e-4
 
-		# Round for naming the files
-        j = np.round(i,3)
-        name = "input_"+experiment_name+"_"+str(j)
-        out_name = "output_"+experiment_name+"_"+str(j)
-        nmx_line = "NMX   OR   "+str(nmax)+" "+str(i)
+# Loop over our range of parameter space
+# for i in np.arange(lower_bound, upper_bound, (upper_bound - lower_bound)/iters):
+for i in (opt_alpha, opt_alpha + grad_step):
 
-		# Copy the basic input and append all of the relevant
-		# input lines to it
-        shutil.copyfile("basic_input", name)
-        f = open(name, "a")
-        f.write(z_line+"\n")
-        f.write(zs_line+"\n")
-        f.write(a_line+"\n")
-        f.write(be_line+"\n")
-        f.write(nop_line+"\n")
-        f.write(nmx_line+"\n")
-        f.write(xeq_line+"\n")
-        f.write(stop_line+"\n")
-        f.close()
-		
-		# Run the code with our chosen distribution
-        os.system("../a.out < "+name+" >"+out_name)
-		
-		# Collect all of the intensities
-        intensity_table = parse_akylas_transitions(out_name)
-		  
-        # Keep track of the intensities and parameter value
-        alpha_vals[counter] = j
-        list_of_dicts.append(intensity_table)
-        counter += 1
+    # Round for naming the files
+    j = np.round(i,3)
+    name = "input_"+experiment_name+"_"+str(j)
+    out_name = "output_"+experiment_name+"_"+str(j)
+    nmx_line = "NMX   OR   "+str(nmax)+" "+str(i)
+
+    # Copy the basic input and append all of the relevant
+    # input lines to it
+    shutil.copyfile("basic_input", name)
+    f = open(name, "a")
+    f.write(z_line+"\n")
+    f.write(zs_line+"\n")
+    f.write(a_line+"\n")
+    f.write(be_line+"\n")
+    f.write(nop_line+"\n")
+    f.write(nmx_line+"\n")
+    f.write(xeq_line+"\n")
+    f.write(stop_line+"\n")
+    f.close()
+    
+    # Run the code with our chosen distribution
+    os.system("../a.out < "+name+" >"+out_name)
+    
+    # Collect all of the intensities
+    intensity_table = parse_akylas_transitions(out_name)
+      
+    # Keep track of the intensities and parameter value
+    # alpha_vals[counter] = j
+    # list_of_dicts.append(intensity_table)
+    grad_values.append(intensity_table[2][0])
+    counter += 1
+
+first_order_std = (np.sqrt(((grad_values[1] - grad_values[0])/grad_step)**2 * alpha_std **2))
+mean_val = grad_values[0]
  
 # Loss as a function of parameter space
 loss_array = np.zeros(iters)
 
 # Loop over each of our samples
-for l in range(iters):
-    loss_func = 0
+# for l in range(iters):
+#     loss_func = 0
 
-    # Loop over each experimental start point
-    for i,j in zip(exp_intens.values(), exp_intens.keys()):
+#     # Loop over each experimental start point
+#     for i,j in zip(exp_intens.values(), exp_intens.keys()):
 
-        counter = 1
+#         counter = 1
 
-        # Loop over each transition 
-        for k in i:
+#         # Loop over each transition 
+#         for k in i:
 
-            # Split up into intensity and error
-            intens = k.split("+")[0]
-            err = k.split("+")[1]
+#             # Split up into intensity and error
+#             intens = k.split("+")[0]
+#             err = k.split("+")[1]
 
-            # If we reached a -2, then we can move on to the next line as
-            # no experimental transition exists
-            if(float(intens) < -1):
-                continue
+#             # If we reached a -2, then we can move on to the next line as
+#             # no experimental transition exists
+#             if(float(intens) < -1):
+#                 continue
 
-            # Add the contribution to the loss function, scaled with the 
-            # experimental uncertainty
-            loss_func += ((float(list_of_dicts[l][int(j)][counter-1]) - float(intens))/float(err))**2
-            counter += 1
-        loss_array[l] = loss_func
+#             # Add the contribution to the loss function, scaled with the 
+#             # experimental uncertainty
+#             loss_func += ((float(list_of_dicts[l][int(j)][counter-1]) - float(intens))/float(err))**2
+#             counter += 1
+#         loss_array[l] = loss_func
 
-# Find the fitted parameter which corresponds to the minimum
-# value of the loss function
-fitted_alpha = alpha_vals[np.argmin(loss_array)]
+# # Find the fitted parameter which corresponds to the minimum
+# # value of the loss function
+# fitted_alpha = alpha_vals[np.argmin(loss_array)]
+fitted_alpha = 0.16
 print("Optimal parameter = ", fitted_alpha)
 
-# Make a new directory to contain data we will
-# want to plot with GNUplot
-figure_data = "figure_data"
-os.makedirs(figure_data, exist_ok=True)
+# Now we must use the fitted parameter and a normal distribution to run the calculation
+# multiple times
+num_samples = 10
 
-# Name of the lossplot file
-loss_data = "lossplot_"+experiment_name+".dat"
+# List which holds all the intensities for each sample i.e num_samples amount of dictionaries
+normal_dist_intensities = []
 
-if(int(l_distribution) != 4):
-    # Write the loss function to file
-    f = open(loss_data, "w")
-    if(int(l_distribution) == 0):
-        for i in range(len(alpha_vals)):
-            f.write(str(alpha_vals[i])+" "+ str(loss_array[i])+"\n")
-    elif(int(l_distribution) == 2 or int(l_distribution) == 16):
-        for i in range(len(a_vals)):
-            # for j in range(len(b_vals)):
-            f.write(str(a_vals[i])+" "+str(b_vals[i]) +" "+str(loss_array[i])+"\n")
+# Loop over number of samples we want from a normal distribution centred around
+# the fitted alpha value
+for j in range(num_samples):
+    sampled_alpha = np.random.normal(fitted_alpha, alpha_std)
+
+    # Each iteration gets a file
+    name = "input_"+experiment_name+"_"+str(j)
+    out_name = "output_"+experiment_name+"_"+str(j)
+    nmx_line = "NMX   OR   "+str(nmax)+" "+str(sampled_alpha)
+
+    # Copy the basic input and append all of the relevant
+    # input lines to it
+    shutil.copyfile("basic_input", name)
+    f = open(name, "a")
+    f.write(z_line+"\n")
+    f.write(zs_line+"\n")
+    f.write(a_line+"\n")
+    f.write(be_line+"\n")
+    f.write(nop_line+"\n")
+    f.write(nmx_line+"\n")
+    f.write(xeq_line+"\n")
+    f.write(stop_line+"\n")
     f.close()
-
-    # Move the loss plot to a folder
-    shutil.move(loss_data, figure_data+"/"+loss_data)
+    
+    # Run the code with our chosen distribution
+    os.system("../a.out < "+name+" >"+out_name)
+    
+    # Collect all of the intensities
+    intensity_table = parse_akylas_transitions(out_name)
+      
+    # Keep track of the intensities and parameter value
+    normal_dist_intensities.append(intensity_table)
+    
+lyman_alpha_intensities = np.zeros(num_samples)
+for j in range(len(normal_dist_intensities)):
+    lyman_alpha_intensities[j] = (normal_dist_intensities[j][2][0])
+# print(lyman_alpha_intensities)
+sns.kdeplot(lyman_alpha_intensities)
+print("Intensity of 2->1 using brute force sampling =  ", np.mean(lyman_alpha_intensities) ," +- ", np.std(lyman_alpha_intensities))
+print("Intensity of 2->1 using first order variance = ", mean_val ," +- ", first_order_std)
+x = np.linspace(mean_val - 3*first_order_std, mean_val + 3*first_order_std, 100)
+plt.plot(x, st.norm.pdf(x, mean_val, first_order_std))
+plt.show()
