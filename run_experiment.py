@@ -82,6 +82,41 @@ def parse_akylas_transitions(out_name):
             akylas_intensities[i].append(float_line)
     return akylas_intensities
     
+def run_akylas_code(experiment_name, label, is_opt=False):
+
+    # If we are optimising using many values of alpha
+    # or calculating gradient, then we round the label
+    if (is_opt):
+        j = np.round(label,3)
+
+    # Don't bother rounding for the integer values of samples
+    j = label
+    
+    name = "input_"+experiment_name+"_"+str(j)
+    out_name = "output_"+experiment_name+"_"+str(j)
+    nmx_line = "NMX   OR   "+str(nmax)+" "+str(label)
+
+    # Copy the basic input and append all of the relevant
+    # input lines to it
+    shutil.copyfile("basic_input", name)
+    f = open(name, "a")
+    f.write(z_line+"\n")
+    f.write(zs_line+"\n")
+    f.write(a_line+"\n")
+    f.write(be_line+"\n")
+    f.write(nop_line+"\n")
+    f.write(nmx_line+"\n")
+    f.write(xeq_line+"\n")
+    f.write(stop_line+"\n")
+    f.close()
+    
+    # Run the code with our chosen distribution
+    os.system("../a.out < "+name+" >"+out_name)
+    
+    # Collect all of the intensities
+    intensity_table = parse_akylas_transitions(out_name)
+    return intensity_table
+
 if(len(sys.argv) == 1):
     print("Fatal error: Element must be provided at command line")
     sys.exit()
@@ -89,11 +124,17 @@ if(len(sys.argv) == 1):
 # For now we are keeping nmax at 20
 nmax = 20
 
-
 # Get the element from command line
 element = sys.argv[1]
 alpha = sys.argv[2]
-iters = int(sys.argv[3])
+mode = int(sys.argv[3])
+
+# If mode == -1, then we perform a regression to optimise alpha
+# If mode > 0, then we do brute force sampling
+if (mode == -1):
+    iters = 100
+else:
+    iters = mode
 
 nop_line = "NOP   OR   0"
 experiment_name = element+"_"+alpha
@@ -131,148 +172,116 @@ intensity_table = []
 # This contains a dictionary for each sample of the parameters
 list_of_dicts = []
 
-# Counter for keeping track of the samples
-counter = 0
+# In this case, we want to perform optimisation to find the optimal parameter
+if(mode == -1):
 
-# Loop over a set of bounds from the user specific exponent
+    counter = 0
+    # Zero the alpha array
+    alpha_vals = np.zeros(iters)
+    # Set the range we are looking at
+    sensitivity_range = 3.0
+    alpha = float(alpha)
+    upper_bound = alpha * ( 1 + sensitivity_range)
+    lower_bound = alpha * ( 1 - sensitivity_range)
+    # Loop over our range of parameter space
+    for i in np.arange(lower_bound, upper_bound, (upper_bound - lower_bound)/iters):
 
-# Set the range we are looking at
-sensitivity_range = 3.0
-alpha = float(alpha)
-upper_bound = alpha * ( 1 + sensitivity_range)
-lower_bound = alpha * ( 1 - sensitivity_range)
-
-# Zero the alpha array
-alpha_vals = np.zeros(iters)
-
-# Holds 2 values to calculate the gradient
-grad_values = []
-grad_step = 1e-6 * 0.16
-opt_alpha = 0.16
-alpha_std = 8e-4
-
-# Loop over our range of parameter space
-# for i in np.arange(lower_bound, upper_bound, (upper_bound - lower_bound)/iters):
-for i in (opt_alpha, opt_alpha + grad_step):
-
-    # Round for naming the files
-    j = np.round(i,3)
-    name = "input_"+experiment_name+"_"+str(j)
-    out_name = "output_"+experiment_name+"_"+str(j)
-    nmx_line = "NMX   OR   "+str(nmax)+" "+str(i)
-
-    # Copy the basic input and append all of the relevant
-    # input lines to it
-    shutil.copyfile("basic_input", name)
-    f = open(name, "a")
-    f.write(z_line+"\n")
-    f.write(zs_line+"\n")
-    f.write(a_line+"\n")
-    f.write(be_line+"\n")
-    f.write(nop_line+"\n")
-    f.write(nmx_line+"\n")
-    f.write(xeq_line+"\n")
-    f.write(stop_line+"\n")
-    f.close()
-    
-    # Run the code with our chosen distribution
-    os.system("../a.out < "+name+" >"+out_name)
-    
-    # Collect all of the intensities
-    intensity_table = parse_akylas_transitions(out_name)
+        # Collect all of the intensities
+        intensity_table = run_akylas_code(experiment_name, i, True)
       
-    # Keep track of the intensities and parameter value
-    # alpha_vals[counter] = j
-    # list_of_dicts.append(intensity_table)
-    grad_values.append(intensity_table[2][0])
-    counter += 1
+        # Keep track of the intensities and parameter value
+        list_of_dicts.append(intensity_table)
+        alpha_vals[counter] = i
+        counter += 1
 
-first_order_std = (np.sqrt(((grad_values[1] - grad_values[0])/grad_step)**2 * alpha_std **2))
-mean_val = grad_values[0]
  
-# Loss as a function of parameter space
-loss_array = np.zeros(iters)
+    # Loss as a function of parameter space
+    loss_array = np.zeros(iters)
 
-# Loop over each of our samples
-# for l in range(iters):
-#     loss_func = 0
+    counter = 0
+    # Loop over each of our samples
+    for l in range(iters):
+        loss_func = 0
 
-#     # Loop over each experimental start point
-#     for i,j in zip(exp_intens.values(), exp_intens.keys()):
+        # Loop over each experimental start point
+        for i,j in zip(exp_intens.values(), exp_intens.keys()):
 
-#         counter = 1
+            counter = 1
 
-#         # Loop over each transition 
-#         for k in i:
+            # Loop over each transition 
+            for k in i:
 
-#             # Split up into intensity and error
-#             intens = k.split("+")[0]
-#             err = k.split("+")[1]
+                # Split up into intensity and error
+                intens = k.split("+")[0]
+                err = k.split("+")[1]
 
-#             # If we reached a -2, then we can move on to the next line as
-#             # no experimental transition exists
-#             if(float(intens) < -1):
-#                 continue
+                # If we reached a -2, then we can move on to the next line as
+                # no experimental transition exists
+                if(float(intens) < -1):
+                    continue
 
-#             # Add the contribution to the loss function, scaled with the 
-#             # experimental uncertainty
-#             loss_func += ((float(list_of_dicts[l][int(j)][counter-1]) - float(intens))/float(err))**2
-#             counter += 1
-#         loss_array[l] = loss_func
+                # Add the contribution to the loss function, scaled with the 
+                # experimental uncertainty
+                loss_func += ((float(list_of_dicts[l][int(j)][counter-1]) - float(intens))/float(err))**2
+                counter += 1
+            loss_array[l] = loss_func
 
-# # Find the fitted parameter which corresponds to the minimum
-# # value of the loss function
-# fitted_alpha = alpha_vals[np.argmin(loss_array)]
-fitted_alpha = 0.16
-print("Optimal parameter = ", fitted_alpha)
+    fitted_alpha = alpha_vals[np.argmin(loss_array)]
 
+    print("Optimal parameter = ", fitted_alpha)
+    sys.exit()
+
+elif(mode > 0):
+
+    opt_alpha = float(alpha)
+
+    # Loop over a set of bounds from the user specific exponent
+    # Holds 2 values to calculate the gradient
+    grad_values = []
+    grad_step = 1e-6 * opt_alpha
+    alpha_std = 8e-4
+
+    for i in (opt_alpha, opt_alpha + grad_step):
+
+        intensity_table = run_akylas_code(experiment_name, i, True)
+        grad_values.append(intensity_table[2][0])
+
+    # Need to calculate the gradient
+    first_order_std = (np.sqrt(((grad_values[1] - grad_values[0])/grad_step)**2 * alpha_std **2))
+
+    mean_val = grad_values[0]
 # Now we must use the fitted parameter and a normal distribution to run the calculation
 # multiple times
-num_samples = 10
+    num_samples = iters
 
-# List which holds all the intensities for each sample i.e num_samples amount of dictionaries
-normal_dist_intensities = []
+    # List which holds all the intensities for each sample i.e num_samples amount of dictionaries
+    normal_dist_intensities = []
 
-# Loop over number of samples we want from a normal distribution centred around
-# the fitted alpha value
-for j in range(num_samples):
-    sampled_alpha = np.random.normal(fitted_alpha, alpha_std)
+    # Loop over number of samples we want from a normal distribution centred around
+    # the fitted alpha value
+    for j in range(num_samples):
+        sampled_alpha = np.random.normal(opt_alpha, alpha_std)
 
-    # Each iteration gets a file
-    name = "input_"+experiment_name+"_"+str(j)
-    out_name = "output_"+experiment_name+"_"+str(j)
-    nmx_line = "NMX   OR   "+str(nmax)+" "+str(sampled_alpha)
+        # Run the code and obtain all intensities
+        intensity_table = run_akylas_code(experiment_name, sampled_alpha, True)
 
-    # Copy the basic input and append all of the relevant
-    # input lines to it
-    shutil.copyfile("basic_input", name)
-    f = open(name, "a")
-    f.write(z_line+"\n")
-    f.write(zs_line+"\n")
-    f.write(a_line+"\n")
-    f.write(be_line+"\n")
-    f.write(nop_line+"\n")
-    f.write(nmx_line+"\n")
-    f.write(xeq_line+"\n")
-    f.write(stop_line+"\n")
-    f.close()
+        # Keep track of the intensities and parameter value
+        normal_dist_intensities.append(intensity_table)
     
-    # Run the code with our chosen distribution
-    os.system("../a.out < "+name+" >"+out_name)
-    
-    # Collect all of the intensities
-    intensity_table = parse_akylas_transitions(out_name)
-      
-    # Keep track of the intensities and parameter value
-    normal_dist_intensities.append(intensity_table)
-    
-lyman_alpha_intensities = np.zeros(num_samples)
-for j in range(len(normal_dist_intensities)):
-    lyman_alpha_intensities[j] = (normal_dist_intensities[j][2][0])
-# print(lyman_alpha_intensities)
-sns.kdeplot(lyman_alpha_intensities)
-print("Intensity of 2->1 using brute force sampling =  ", np.mean(lyman_alpha_intensities) ," +- ", np.std(lyman_alpha_intensities))
-print("Intensity of 2->1 using first order variance = ", mean_val ," +- ", first_order_std)
-x = np.linspace(mean_val - 3*first_order_std, mean_val + 3*first_order_std, 100)
-plt.plot(x, st.norm.pdf(x, mean_val, first_order_std))
-plt.show()
+    # Holds a lyman alpha intensity for each sample
+    lyman_alpha_intensities = np.zeros(num_samples)
+
+    # Grab the lyman alpha intensities from the dictionary
+    for j in range(len(normal_dist_intensities)):
+        lyman_alpha_intensities[j] = (normal_dist_intensities[j][2][0])
+
+    # Plot the brute force sample curve
+    sns.kdeplot(lyman_alpha_intensities, label="Brute force sampling")
+
+    # Plot the analytical Gaussian using the first order variance estimation
+    x = np.linspace(mean_val - 3*first_order_std, mean_val + 3*first_order_std, 100)
+    plt.plot(x, st.norm.pdf(x, mean_val, first_order_std), label="First order variance estimation")
+    plt.legend()
+    print("Intensity of 2->1 using brute force sampling =  ", np.mean(lyman_alpha_intensities) ," +- ", np.std(lyman_alpha_intensities))
+    print("Intensity of 2->1 using first order variance = ", mean_val ," +- ", first_order_std)
+    plt.show()

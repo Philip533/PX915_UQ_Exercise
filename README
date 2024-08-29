@@ -1,0 +1,21 @@
+Dependencies:
+
+Seaborn-0.13.2
+TinyGP-0.3.0
+SciPy 1.13.1
+NumPy 2.0.2
+Gfortran 11.4.1
+
+Available elements:
+P, Cl, Mg, Al, In, Au, Ho
+
+First, a least squares regression must be performed using experimental data to find a suitable mean value of alpha. This can be done by doing:
+        python3 run_experiment.py <element symbol> <sensible guess for alpha> -1
+Sensible values of alpha can be taken from either Hartmann or Vogel for the corresponding element.
+This prints out an optimised value of alpha; make a note of this.
+
+Next, the code needs to be run again, but with different input parameters:
+        python3 run_experiment.py <element symbol> <fitted alpha from previous run> <number of samples>
+
+A plot containing both the first order estimation and the brute force samples will be created, along with the mean and standard deviations of both distributions
+
