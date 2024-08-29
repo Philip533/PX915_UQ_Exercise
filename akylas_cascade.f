@@ -2584,7 +2584,7 @@ C       end of l1 loop
      0  NO = N1-1                                                       
         IF(IPR3.EQ.0) WRITE(IW,3200)(N1,N2,ENERGY(N2),RADNT(N2),N2=1,NO)
  3200   FORMAT(4H N1=,I2,5H, N2=,I2,4H, E=,-6PF11.8,5H(MEV),6H, RAD=,   
-     1  1PE12.4,12H(NORMALIZED)/)                                       
+     1  1PE16.9,12H(NORMALIZED)/)                                       
      0  IF(MPU.EQ.0.OR.IPN.NE.0)  GO TO 4000                            
         DO 3400 IT=1,MPU                                                
         IF(ICPU(IT)/4194304.NE.2)  GO TO 3400                           
