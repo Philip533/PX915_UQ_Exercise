@@ -7,7 +7,7 @@ TinyGP-0.3.0
 SciPy 1.13.1
 NumPy 2.0.2
 Gfortran 11.4.1
-Make sure that X-forwarding is enabled for your SSH connection!
+Make sure that X-forwarding is enabled for your SSH connection if you want the final figure to show up automatically.
 
 Available elements:
 P, Cl, Mg, Al, In, Au, Ho
@@ -25,7 +25,8 @@ Next, the code needs to be run again, but with different input parameters:
 
 This will run the Akylas code <number of samples> times, using the fitted parameter from before. The intensities for the 2→1 transition are then calculated, and a histogram is plotted.
 
-A plot containing both the first order estimation and the brute force samples will be created, along with the mean and standard deviations of both distributions.
+A plot containing both the first order estimation and the brute force samples will be created, along with the mean and standard deviations of both distributions. 
+This file will be called "histogram.pdf" and will be located in the root of the repository.
 
 [1] F. J. Hartmann, R. Bergmann, H. Daniel, H.-J. Pfeiffer, T. von Egidy, and W. Wilhelm, Measurement of the muonic x-ray cascade in Mg, AI, In, Ho, and Au, Z Physik A 305, 189 (1982).
 

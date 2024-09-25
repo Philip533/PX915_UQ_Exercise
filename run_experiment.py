@@ -285,4 +285,9 @@ elif(mode > 0):
     print("Intensity of 2->1 using brute force sampling =  ", np.mean(lyman_alpha_intensities) ," +- ", np.std(lyman_alpha_intensities))
     print("Intensity of 2->1 using first order variance = ", mean_val ," +- ", first_order_std)
     plt.xlabel("Intensity of 2→1")
-    plt.show()
+    plt.savefig("histograms.pdf")
+    os.system("mv histograms.pdf ../")
+
+    # Show the figure if we have X11 available
+    if os.environ.get("DISPLAY"):
+        plt.show()
