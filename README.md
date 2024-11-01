@@ -15,13 +15,13 @@ P, Cl, Mg, Al, In, Au, Ho
 For this set of calculations, we are using a modified statistical distribution with a free parameter alpha to model the X-ray intensity of a 2→1 transition in a given element. We want to use the Akylas cascade code provided to both brute force, and perform first order variance estimation in order to compare the statistics.
 
 First, a least squares regression must be performed using experimental data to find a suitable mean value of alpha. This can be done by doing:
-        python3 run_experiment.py <element symbol> <sensible guess for alpha> -1
+        `python3 run_experiment.py <element symbol> <sensible guess for alpha> -1`
 Sensible initial guesses of values of alpha can be taken from either Hartmann [1] or Vogel [2] for the corresponding element. (Hint: Tables I-VI of Vogel and Tables 3-7 of Hartmann)
 
 This prints out an optimised value of alpha; make a note of this value, as it used for the next step.
 
 Next, the code needs to be run again, but with different input parameters:
-        python3 run_experiment.py <element symbol> <fitted alpha from previous run> <number of samples>
+        `python3 run_experiment.py <element symbol> <fitted alpha from previous run> <number of samples>`
 
 This will run the Akylas code <number of samples> times, using the fitted parameter from before. The intensities for the 2→1 transition are then calculated, and a histogram is plotted.
 
